@@ -31,19 +31,19 @@ jobs:
       MONGO_URI: mongodb://127.0.0.1:27017
       JWT_SECRET: bench-secret
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Check out code under test
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ matrix.code == 'baseline' && 'main' || github.sha }}
           path: target
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - name: Build services
         run: |
           for s in user chat; do
-            (cd target/backend/$s && npm install --no-audit --no-fund && npx tsc -p .)
+            (cd target/backend/$s && npm install --no-audit --no-fund && npm install --no-save --no-audit --no-fund typescript@5.8.3 && npx --no-install tsc -p .)
           done
       - name: Seed database
         working-directory: backend/bench
