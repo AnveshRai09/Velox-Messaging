@@ -82,6 +82,9 @@ jobs:
             out += `\n**Socket.IO delivery** (POST /message to receiver event, ${s.concurrent_pairs} concurrent pairs, ${s.messages} messages): p50 ${s.p50_ms} ms, p95 ${s.p95_ms} ms, p99 ${s.p99_ms} ms\n`;
             console.log(out);
           ' >> "$GITHUB_STEP_SUMMARY"
+          # Also publish the raw numbers as annotations so they can be read via the API.
+          echo "::notice title=bench-http-$CODE::$(node -e 'process.stdout.write(JSON.stringify(require("./http-results.json")))')"
+          echo "::notice title=bench-socket-$CODE::$(node -e 'process.stdout.write(JSON.stringify(require("./socket-results.json")))')"
       - name: Service logs
         if: failure()
         run: tail -50 user.log chat.log
