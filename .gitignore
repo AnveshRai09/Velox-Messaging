@@ -8,3 +8,4 @@ dist/
 coverage/
 backend/bench/fixtures.json
 backend/bench/*-results*.json
+dump.rdb
