@@ -24,7 +24,7 @@ const schema = new Schema<IMessage>(
     },
     sender: {
       type: String,
-      requred: true,
+      required: true,
     },
     text: String,
     image: {
@@ -49,5 +49,10 @@ const schema = new Schema<IMessage>(
     timestamps: true,
   }
 );
+
+// Every message query filters by chatId: unseen counts (chat list), mark-as-seen,
+// and history sorted by createdAt. Without these, each one scans the collection.
+schema.index({ chatId: 1, seen: 1 });
+schema.index({ chatId: 1, createdAt: 1 });
 
 export const Messages = mongoose.model<IMessage>("Messages", schema);

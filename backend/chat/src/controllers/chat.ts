@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from "../middlewares/isAuth.js";
 import { Chat } from "../models/Chat.js";
 import { Messages } from "../models/Messages.js";
 import { getRecieverSocketId, io } from "../config/socket.js";
+import { messagesSentTotal } from "../config/metrics.js";
 
 export const createNewChat = TryCatch(
   async (req: AuthenticatedRequest, res) => {
@@ -182,6 +183,7 @@ export const sendMessage = TryCatch(async (req: AuthenticatedRequest, res) => {
   const message = new Messages(messageData);
 
   const savedMessage = await message.save();
+  messagesSentTotal.inc({ type: messageData.messageType });
 
   const latestMessageText = imageFile ? "📷 Image" : text;
 
@@ -252,7 +254,7 @@ export const getMessagesByChat = TryCatch(
     }
 
     const isUserInChat = chat.users.some(
-      (userId) => userId.toString() === userId.toString()
+      (participantId) => participantId.toString() === userId.toString()
     );
 
     if (!isUserInChat) {

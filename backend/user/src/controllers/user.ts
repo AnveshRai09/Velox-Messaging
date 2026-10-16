@@ -1,16 +1,25 @@
 import { generateToken } from "../config/generateToken.js";
 import { publishToQueue } from "../config/rabbitmq.js";
 import TryCatch from "../config/TryCatch.js";
-import { redisClient } from "../index.js";
+import { redisClient } from "../config/redis.js";
+import { otpRequestsTotal } from "../config/metrics.js";
 import { AuthenticatedRequest } from "../middleware/isAuth.js";
 import { User } from "../model/User.js";
 
 export const loginUser = TryCatch(async (req, res) => {
   const { email } = req.body;
 
+  if (!email) {
+    res.status(400).json({
+      message: "Email is required",
+    });
+    return;
+  }
+
   const rateLimitKey = `otp:ratelimit:${email}`;
   const rateLimit = await redisClient.get(rateLimitKey);
   if (rateLimit) {
+    otpRequestsTotal.inc({ outcome: "rate_limited" });
     res.status(429).json({
       message: "Too may requests. Please wait before requesting new opt",
     });
@@ -35,6 +44,7 @@ export const loginUser = TryCatch(async (req, res) => {
   };
 
   await publishToQueue("send-otp", message);
+  otpRequestsTotal.inc({ outcome: "sent" });
 
   res.status(200).json({
     message: "OTP sent to your mail",

@@ -1,0 +1,16 @@
+{
+  "name": "velox-bench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "seed": "node seed.mjs",
+    "http": "node http-load.mjs",
+    "socket": "node socket-latency.mjs"
+  },
+  "dependencies": {
+    "autocannon": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.16.1",
+    "socket.io-client": "^4.8.1"
+  }
+}

@@ -24,4 +24,7 @@ const schema: Schema<IChat> = new Schema(
   }
 );
 
+// Chat list lookups filter by participant.
+schema.index({ users: 1 });
+
 export const Chat = mongoose.model<IChat>("Chat", schema);
