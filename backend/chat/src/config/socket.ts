@@ -1,6 +1,10 @@
 import { Server, Socket } from "socket.io";
 import http from "http";
 import express from "express";
+import {
+  onlineUsersGauge,
+  socketEventsTotal,
+} from "./metrics.js";
 
 const app = express();
 
@@ -30,12 +34,14 @@ io.on("connection", (socket: Socket) => {
   }
 
   io.emit("getOnlineUser", Object.keys(userSocketMap));
+  onlineUsersGauge.set(Object.keys(userSocketMap).length);
 
   if (userId) {
     socket.join(userId);
   }
 
   socket.on("typing", (data) => {
+    socketEventsTotal.inc({ event: "typing" });
     console.log(`User ${data.userId} is typing in chat ${data.chatId}`);
     socket.to(data.chatId).emit("userTyping", {
       chatId: data.chatId,
@@ -44,6 +50,7 @@ io.on("connection", (socket: Socket) => {
   });
 
   socket.on("stopTyping", (data) => {
+    socketEventsTotal.inc({ event: "stopTyping" });
     console.log(`User ${data.userId} stopped typing in chat ${data.chatId}`);
     socket.to(data.chatId).emit("userStoppedTyping", {
       chatId: data.chatId,
@@ -52,11 +59,13 @@ io.on("connection", (socket: Socket) => {
   });
 
   socket.on("joinChat", (chatId) => {
+    socketEventsTotal.inc({ event: "joinChat" });
     socket.join(chatId);
     console.log(`User ${userId} joined chat room ${chatId}`);
   });
 
   socket.on("leaveChat", (chatId) => {
+    socketEventsTotal.inc({ event: "leaveChat" });
     socket.leave(chatId);
     console.log(`User ${userId} left chat room ${chatId}`);
   });
@@ -68,6 +77,7 @@ io.on("connection", (socket: Socket) => {
       delete userSocketMap[userId];
       console.log(`User ${userId} removed from online users`);
       io.emit("getOnlineUser", Object.keys(userSocketMap));
+      onlineUsersGauge.set(Object.keys(userSocketMap).length);
     }
   });
 

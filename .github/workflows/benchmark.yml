@@ -1,0 +1,97 @@
+name: Benchmark
+
+# Load-tests the user and chat services against real MongoDB, Redis and
+# RabbitMQ. "baseline" runs the code on main, "current" runs this commit,
+# so the two result tables can be compared directly.
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/tests-metrics-ci]
+
+jobs:
+  bench:
+    name: benchmark (${{ matrix.code }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        code: [baseline, current]
+    services:
+      mongo:
+        image: mongo:7
+        ports: ["27017:27017"]
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+      rabbitmq:
+        image: rabbitmq:3
+        ports: ["5672:5672"]
+    env:
+      MONGO_URI: mongodb://127.0.0.1:27017
+      JWT_SECRET: bench-secret
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check out code under test
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ matrix.code == 'baseline' && 'main' || github.sha }}
+          path: target
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Build services
+        run: |
+          for s in user chat; do
+            (cd target/backend/$s && npm install --no-audit --no-fund && npm install --no-save --no-audit --no-fund typescript@5.8.3 && npx --no-install tsc -p .)
+          done
+      - name: Seed database
+        working-directory: backend/bench
+        env:
+          USERS: 100
+          MESSAGES_PER_CHAT: 200
+        run: |
+          npm install --no-audit --no-fund
+          node seed.mjs
+      # Services start after seeding so Mongoose can build its indexes on the seeded data.
+      - name: Start services
+        run: |
+          cd target/backend
+          (cd user && PORT=5000 REDIS_URL=redis://127.0.0.1:6379 Rabbitmq_Host=127.0.0.1 Rabbitmq_Username=guest Rabbitmq_Password=guest nohup node dist/index.js > "$GITHUB_WORKSPACE/user.log" 2>&1 &)
+          (cd chat && PORT=5002 USER_SERVICE=http://127.0.0.1:5000 Cloud_Name=x Api_Key=x Api_Secret=x nohup node dist/index.js > "$GITHUB_WORKSPACE/chat.log" 2>&1 &)
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null localhost:5000 && curl -s -o /dev/null localhost:5002; then break; fi
+            sleep 1
+          done
+          sleep 5
+      - name: Run benchmarks
+        working-directory: backend/bench
+        env:
+          CODE: ${{ matrix.code }}
+          DURATION: 20
+          CONNECTIONS: 50
+          PAIRS: 50
+          MESSAGES: 20
+        run: |
+          node http-load.mjs
+          node socket-latency.mjs
+          node -e '
+            const h = require("./http-results.json"), s = require("./socket-results.json");
+            let out = `## Benchmark: ${process.env.CODE}\n${h.connections} connections, ${h.duration_s}s per scenario, real MongoDB 7\n\n| Scenario | Req/s | p50 ms | p90 ms | p99 ms | Requests | Non-2xx | Errors |\n|---|---|---|---|---|---|---|---|\n`;
+            for (const r of h.results) out += `| ${r.scenario} | ${r.rps_avg} | ${r.p50_ms} | ${r.p90_ms} | ${r.p99_ms} | ${r.requests} | ${r.non2xx} | ${r.errors} |\n`;
+            out += `\n**Socket.IO delivery** (POST /message to receiver event, ${s.concurrent_pairs} concurrent pairs, ${s.messages} messages): p50 ${s.p50_ms} ms, p95 ${s.p95_ms} ms, p99 ${s.p99_ms} ms\n`;
+            console.log(out);
+          ' >> "$GITHUB_STEP_SUMMARY"
+          # Also publish the raw numbers as annotations so they can be read via the API.
+          echo "::notice title=bench-http-$CODE::$(node -e 'process.stdout.write(JSON.stringify(require("./http-results.json")))')"
+          echo "::notice title=bench-socket-$CODE::$(node -e 'process.stdout.write(JSON.stringify(require("./socket-results.json")))')"
+      - name: Service logs
+        if: failure()
+        run: tail -50 user.log chat.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-${{ matrix.code }}
+          path: |
+            backend/bench/http-results.json
+            backend/bench/socket-results.json
